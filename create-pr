@@ -3,12 +3,30 @@
 # Enable better error handling
 set -euo pipefail
 
-# Default values - Template, Draft, and Open are now true by default
-TEMPLATE=true
-DRAFT=true
-OPEN=true
+# Get the directory where this script is located
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# Source configuration management if available
+if [ -f "$SCRIPT_DIR/create-pr-config" ]; then
+    source "$SCRIPT_DIR/create-pr-config"
+    load_config
+    
+    # Set defaults from config
+    TEMPLATE="${CONFIG_TEMPLATE:-true}"
+    DRAFT="${CONFIG_DRAFT:-true}"
+    OPEN="${CONFIG_OPEN:-true}"
+    BASE_BRANCH="${CONFIG_BASE_BRANCH:-master}"
+    LYRICS_FILE="${CONFIG_LYRICS_FILE:-}"
+else
+    # Fallback defaults if config system not available
+    TEMPLATE=true
+    DRAFT=true
+    OPEN=true
+    BASE_BRANCH="master"
+    LYRICS_FILE=""
+fi
+
 DRY_RUN=false
-BASE_BRANCH="master"
 TITLE=""
 BRANCH=""
 
@@ -47,7 +65,7 @@ time_cmd() {
 
 debug_print() {
     if [ "$DRY_RUN" = true ]; then
-        echo -e "${GREEN}[DEBUG]${NC} $1"
+        echo -e "${GREEN}[DEBUG]${NC} $1" >&2
     fi
 }
 
@@ -89,7 +107,7 @@ get_title() {
 # Function to process template with proper escaping
 process_template() {
     local template_content=$1
-    local lyrics_file="/Users/snirs/bin/lyrics"
+    local lyrics_file="${LYRICS_FILE:-/Users/snirs/bin/lyrics}"
     
     if [ ! -f "$lyrics_file" ]; then
         echo "$template_content"
@@ -122,23 +140,32 @@ while getopts "tTdDoOnNb:B:h-:" opt; do
                 no-open) OPEN=false ;;
                 help)
                     echo "Usage: create-pr [options] [branch_name] [title]"
+                    echo "       create-pr config <command>"
                     echo ""
                     echo "Default behavior: Creates a draft PR using template and opens in browser"
                     echo ""
                     echo "Options:"
-                    echo "  -t, -T              Use PR template (default: yes)"
-                    echo "  -d, -D              Create as draft (default: yes)"
-                    echo "  -o, -O              Open in browser (default: yes)"
+                    echo "  -t, -T              Use PR template (default: from config)"
+                    echo "  -d, -D              Create as draft (default: from config)"
+                    echo "  -o, -O              Open in browser (default: from config)"
                     echo "  -n, -N              Dry run (show what would happen)"
-                    echo "  -b, -B <branch>     Base branch (default: master)"
+                    echo "  -b, -B <branch>     Base branch (default: from config)"
                     echo "  --no-template       Don't use PR template"
                     echo "  --no-draft          Don't create as draft"
                     echo "  --no-open           Don't open in browser"
+                    echo ""
+                    echo "Configuration Commands:"
+                    echo "  config show         Show current configuration"
+                    echo "  config set <key> <value>  Set a configuration value"
+                    echo "  config reset        Reset to default configuration"
+                    echo "  config edit         Edit configuration file"
                     echo ""
                     echo "Examples:"
                     echo "  create-pr feature/my-branch \"My PR Title\"     # Creates draft PR with template and opens it"
                     echo "  create-pr --no-draft my-branch \"My Title\"     # Creates non-draft PR"
                     echo "  create-pr --no-template --no-open my-branch     # No template, won't open browser"
+                    echo "  create-pr config set base_branch main           # Set default base branch to main"
+                    echo "  create-pr config set draft false                # Disable draft by default"
                     exit 0
                     ;;
                 *)
@@ -152,7 +179,7 @@ while getopts "tTdDoOnNb:B:h-:" opt; do
             exit 0
             ;;
         \?)
-            echo "Invalid option: -$OPTARG" >&2
+            echo "Invalid option: -${OPTARG:-<unknown>}" >&2
             exit 1
             ;;
     esac
@@ -161,6 +188,18 @@ done
 shift $((OPTIND-1))
 
 debug_print "Arguments after options: $@"
+
+# Handle config command first
+if [ "${1:-}" = "config" ]; then
+    if [ -f "$SCRIPT_DIR/create-pr-config" ]; then
+        shift  # Remove 'config' from arguments
+        "$SCRIPT_DIR/create-pr-config" "$@"
+        exit $?
+    else
+        echo "❌ Configuration system not available (create-pr-config not found)" >&2
+        exit 1
+    fi
+fi
 
 # Get branch and title from arguments
 if [ $# -ge 1 ]; then
@@ -188,9 +227,9 @@ fi
 if [ -z "$BRANCH" ]; then
     CURRENT_BRANCH=$(git branch --show-current)
     debug_print "Current branch: $CURRENT_BRANCH"
-    if [[ "$CURRENT_BRANCH" =~ ^master[0-9]*$ ]]; then
+    if [[ "$CURRENT_BRANCH" =~ ^(master|main)[0-9]*$ ]]; then
         if [ -z "$TITLE" ]; then
-            echo -e "${RED}Error: Cannot create PR from master branch without a branch name or title${NC}" >&2
+            echo -e "${RED}Error: Cannot create PR from master/main branch without a branch name or title${NC}" >&2
             exit 1
         fi
         BRANCH=$(encode_branch_name "$TITLE")
@@ -202,7 +241,8 @@ if [ -z "$BRANCH" ]; then
 fi
 
 # Encode branch name if provided directly (not from current branch)
-if [ -n "$BRANCH" ] && [ "$BRANCH" != "$(git branch --show-current)" ]; then
+# Only encode if it's not already encoded (avoid double encoding)
+if [ -n "$BRANCH" ] && [ "$BRANCH" != "$(git branch --show-current)" ] && [[ ! "$BRANCH" =~ ^[a-z0-9][a-z0-9-]*[a-z0-9]$ ]]; then
     BRANCH=$(encode_branch_name "$BRANCH")
 fi
 
@@ -215,6 +255,28 @@ debug_print "  Draft: $DRAFT"
 debug_print "  Open: $OPEN"
 
 if [ "$DRY_RUN" = true ]; then
+    debug_print "Would create/switch to branch: $BRANCH"
+    debug_print "Would push branch to origin"
+    
+    # Show template processing in dry run
+    if [ "$TEMPLATE" = true ]; then
+        if [ -f ".github/PULL_REQUEST_TEMPLATE.md" ]; then
+            debug_print "Would process PR template:"
+            TEMPLATE_CONTENT=$(cat .github/PULL_REQUEST_TEMPLATE.md)
+            PROCESSED_BODY=$(process_template "$TEMPLATE_CONTENT")
+            echo "--- PR Body Preview ---"
+            echo "$PROCESSED_BODY"
+            echo "--- End PR Body ---"
+        else
+            debug_print "No PR template found at .github/PULL_REQUEST_TEMPLATE.md"
+        fi
+    else
+        debug_print "Would use default PR body: 'Please pull this in!'"
+    fi
+    
+    debug_print "Would create PR with gh cli"
+    debug_print "Would $([ "$OPEN" = true ] && echo "open" || echo "not open") PR in browser"
+    
     echo -e "${GREEN}This was a dry run. No changes were made.${NC}"
     exit 0
 fi
@@ -277,7 +339,7 @@ if ! push_with_retry; then
 fi
 
 # If we branched from master, clean it up but preserve the commit
-if [[ "$ORIGINAL_BRANCH" =~ ^master[0-9]*$ ]]; then
+    if [[ "$ORIGINAL_BRANCH" =~ ^(master|main)[0-9]*$ ]]; then
     echo -e "${YELLOW}Cleaning up master branch...${NC}"
     debug_print "Switching back to $ORIGINAL_BRANCH"
     time_cmd git checkout "$ORIGINAL_BRANCH"
