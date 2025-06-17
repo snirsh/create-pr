@@ -1,0 +1,333 @@
+#!/bin/bash
+
+# Enable better error handling
+set -euo pipefail
+
+# Default values - Template, Draft, and Open are now true by default
+TEMPLATE=true
+DRAFT=true
+OPEN=true
+DRY_RUN=false
+BASE_BRANCH="master"
+TITLE=""
+BRANCH=""
+
+# Check for required dependencies
+if ! command -v git >/dev/null 2>&1; then
+    echo "Error: git is not installed" >&2
+    exit 1
+fi
+
+if ! command -v gh >/dev/null 2>&1; then
+    echo "Error: GitHub CLI (gh) is not installed" >&2
+    exit 1
+fi
+
+# Ensure we're in a git repository
+GIT_DIR=$(git rev-parse --git-dir 2>/dev/null || echo "")
+if [ -z "$GIT_DIR" ]; then
+    echo "Error: Not in a git repository" >&2
+    exit 1
+fi
+
+# Colors for debug output
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+NC='\033[0m' # No Color
+
+# Timing function
+time_cmd() {
+    local start=$(date +%s.%N)
+    "$@"
+    local end=$(date +%s.%N)
+    local elapsed=$(echo "$end - $start" | bc)
+    debug_print "Command '$1' took $elapsed seconds"
+}
+
+debug_print() {
+    if [ "$DRY_RUN" = true ]; then
+        echo -e "${GREEN}[DEBUG]${NC} $1"
+    fi
+}
+
+# Function to encode branch name - simplified and more robust
+encode_branch_name() {
+    local branch=$1
+    debug_print "Encoding branch name: $branch"
+    
+    # Convert to lowercase and replace problematic characters
+    branch=$(echo "$branch" | tr '[:upper:]' '[:lower:]' | \
+        sed -E 's/[^a-z0-9]+/-/g' | \
+        sed -E 's/^-+|-+$//g')
+    
+    # If branch is too long, take first 40 chars (not last 40 as before)
+    if [ ${#branch} -gt 40 ]; then
+        branch="${branch:0:40}"
+        # Ensure we don't end with a dash
+        branch=$(echo "$branch" | sed 's/-$//g')
+    fi
+    
+    debug_print "Encoded branch name: $branch"
+    echo "$branch"
+}
+
+# Function to get the first commit message since master
+get_title() {
+    local base_branch=$1
+    debug_print "Getting title from commits against $base_branch"
+    local title
+    title=$(git log --first-parent HEAD "^origin/$base_branch" --pretty=format:%s 2>/dev/null | tail -n 1) || true
+    if [ -z "$title" ]; then
+        debug_print "No commits found against $base_branch"
+        return 1
+    fi
+    debug_print "Found title: $title"
+    echo "$title"
+}
+
+# Function to process template with proper escaping
+process_template() {
+    local template_content=$1
+    local lyrics_file="/Users/snirs/bin/lyrics"
+    
+    if [ ! -f "$lyrics_file" ]; then
+        echo "$template_content"
+        return
+    fi
+    
+    # Read lyrics safely, preserving newlines
+    local lyrics_content
+    lyrics_content=$(cat "$lyrics_file" | perl -p -e 's/([\/&])/\\$1/g') # Escape special chars
+    
+    if [ "$DRY_RUN" = true ]; then
+        debug_print "Processing template with lyrics"
+    fi
+    
+    # Process template safely using perl instead of sed for better newline handling
+    echo "$template_content" | perl -p -e "s/‼️ ➡️ Enter long description here ⬅️/$lyrics_content/g"
+}
+
+# Parse command line arguments
+while getopts "tTdDoOnNb:B:h-:" opt; do
+    case $opt in
+        t|T) TEMPLATE=true ;;
+        d|D) DRAFT=true ;;
+        o|O) OPEN=true ;;
+        n|N) DRY_RUN=true ;;
+        b|B) BASE_BRANCH="$OPTARG" ;;
+        -)  case "${OPTARG}" in
+                no-template) TEMPLATE=false ;;
+                no-draft) DRAFT=false ;;
+                no-open) OPEN=false ;;
+                help)
+                    echo "Usage: create-pr [options] [branch_name] [title]"
+                    echo ""
+                    echo "Default behavior: Creates a draft PR using template and opens in browser"
+                    echo ""
+                    echo "Options:"
+                    echo "  -t, -T              Use PR template (default: yes)"
+                    echo "  -d, -D              Create as draft (default: yes)"
+                    echo "  -o, -O              Open in browser (default: yes)"
+                    echo "  -n, -N              Dry run (show what would happen)"
+                    echo "  -b, -B <branch>     Base branch (default: master)"
+                    echo "  --no-template       Don't use PR template"
+                    echo "  --no-draft          Don't create as draft"
+                    echo "  --no-open           Don't open in browser"
+                    echo ""
+                    echo "Examples:"
+                    echo "  create-pr feature/my-branch \"My PR Title\"     # Creates draft PR with template and opens it"
+                    echo "  create-pr --no-draft my-branch \"My Title\"     # Creates non-draft PR"
+                    echo "  create-pr --no-template --no-open my-branch     # No template, won't open browser"
+                    exit 0
+                    ;;
+                *)
+                    echo "Invalid option: --${OPTARG}" >&2
+                    exit 1
+                    ;;
+            esac ;;
+        h)
+            echo "Usage: create-pr [options] [branch_name] [title]"
+            echo "Use create-pr --help for more information"
+            exit 0
+            ;;
+        \?)
+            echo "Invalid option: -$OPTARG" >&2
+            exit 1
+            ;;
+    esac
+done
+
+shift $((OPTIND-1))
+
+debug_print "Arguments after options: $@"
+
+# Get branch and title from arguments
+if [ $# -ge 1 ]; then
+    BRANCH="$1"
+    debug_print "Branch from argument: $BRANCH"
+    shift
+fi
+
+if [ $# -ge 1 ]; then
+    TITLE="$1"
+    debug_print "Title from argument: $TITLE"
+    shift
+fi
+
+# If no title specified, get it from commit history
+if [ -z "$TITLE" ]; then
+    TITLE=$(get_title "$BASE_BRANCH") || {
+        echo -e "${RED}Error: Could not determine title from commit history${NC}" >&2
+        exit 1
+    }
+    debug_print "Title from commit history: $TITLE"
+fi
+
+# If no branch specified, use current branch or create from title
+if [ -z "$BRANCH" ]; then
+    CURRENT_BRANCH=$(git branch --show-current)
+    debug_print "Current branch: $CURRENT_BRANCH"
+    if [[ "$CURRENT_BRANCH" =~ ^master[0-9]*$ ]]; then
+        if [ -z "$TITLE" ]; then
+            echo -e "${RED}Error: Cannot create PR from master branch without a branch name or title${NC}" >&2
+            exit 1
+        fi
+        BRANCH=$(encode_branch_name "$TITLE")
+        echo -e "${YELLOW}Creating branch from title: $BRANCH${NC}"
+    else
+        echo -e "${YELLOW}Running on top of branch $CURRENT_BRANCH, using current branch name for the pull request${NC}"
+        BRANCH="$CURRENT_BRANCH"
+    fi
+fi
+
+# Encode branch name if provided directly (not from current branch)
+if [ -n "$BRANCH" ] && [ "$BRANCH" != "$(git branch --show-current)" ]; then
+    BRANCH=$(encode_branch_name "$BRANCH")
+fi
+
+debug_print "Final values:"
+debug_print "  Branch: $BRANCH"
+debug_print "  Title: $TITLE"
+debug_print "  Base branch: $BASE_BRANCH"
+debug_print "  Template: $TEMPLATE"
+debug_print "  Draft: $DRAFT"
+debug_print "  Open: $OPEN"
+
+if [ "$DRY_RUN" = true ]; then
+    echo -e "${GREEN}This was a dry run. No changes were made.${NC}"
+    exit 0
+fi
+
+# Store original branch and commit
+ORIGINAL_BRANCH=$(git rev-parse --abbrev-ref HEAD)
+ORIGINAL_COMMIT=$(git rev-parse HEAD)
+
+# Escape the branch name for git
+ESCAPED_BRANCH=$(echo "$BRANCH" | sed 's/[^a-zA-Z0-9-]/-/g')
+
+debug_print "Switching to branch $ESCAPED_BRANCH"
+# Create and switch to branch if it doesn't exist
+time_cmd git switch -c "$ESCAPED_BRANCH"
+
+# Try to push with timing and better error handling
+push_with_retry() {
+    debug_print "Attempting to push branch"
+    if ! time_cmd git push -u origin "$ESCAPED_BRANCH" 2>/dev/null; then
+        echo -e "${YELLOW}Push failed, attempting to resolve...${NC}"
+        
+        debug_print "Fetching remote branch"
+        if ! time_cmd git fetch origin "$ESCAPED_BRANCH"; then
+            debug_print "Remote branch doesn't exist, attempting force push"
+            if ! time_cmd git push -u origin "$ESCAPED_BRANCH" --force; then
+                echo -e "${RED}Failed to push changes. Please check your permissions or network connection.${NC}" >&2
+                return 1
+            fi
+            return 0
+        fi
+        
+        if git rev-parse --verify "origin/$ESCAPED_BRANCH" >/dev/null 2>&1; then
+            debug_print "Remote branch exists, attempting to rebase"
+            if ! time_cmd git reset --hard "origin/$ESCAPED_BRANCH"; then
+                echo -e "${RED}Failed to reset to remote branch.${NC}" >&2
+                return 1
+            fi
+            
+            # Check if commit is already present
+            if ! git merge-base --is-ancestor "$ORIGINAL_COMMIT" HEAD; then
+                debug_print "Cherry-picking original commit"
+                if ! time_cmd git cherry-pick "$ORIGINAL_COMMIT"; then
+                    echo -e "${RED}Cherry-pick failed. Please resolve conflicts manually.${NC}" >&2
+                    return 1
+                fi
+            fi
+            
+            debug_print "Force pushing changes"
+            if ! time_cmd git push -u origin "$ESCAPED_BRANCH" --force; then
+                echo -e "${RED}Failed to push changes. Please check your permissions or network connection.${NC}" >&2
+                return 1
+            fi
+        fi
+    fi
+    return 0
+}
+
+if ! push_with_retry; then
+    exit 1
+fi
+
+# If we branched from master, clean it up but preserve the commit
+if [[ "$ORIGINAL_BRANCH" =~ ^master[0-9]*$ ]]; then
+    echo -e "${YELLOW}Cleaning up master branch...${NC}"
+    debug_print "Switching back to $ORIGINAL_BRANCH"
+    time_cmd git checkout "$ORIGINAL_BRANCH"
+    debug_print "Resetting master"
+    time_cmd git reset --hard HEAD^
+    if [ -n "$(git status --porcelain)" ]; then
+        debug_print "Stashing uncommitted changes"
+        time_cmd git stash
+        echo "Uncommitted changes have been stashed"
+    fi
+fi
+
+# Switch back to feature branch for PR creation
+debug_print "Switching back to feature branch"
+time_cmd git checkout "$ESCAPED_BRANCH"
+
+# Prepare PR body
+BODY=""
+if [ "$TEMPLATE" = true ]; then
+    if [ -f ".github/PULL_REQUEST_TEMPLATE.md" ]; then
+        debug_print "Processing PR template"
+        TEMPLATE_CONTENT=$(cat .github/PULL_REQUEST_TEMPLATE.md)
+        BODY=$(process_template "$TEMPLATE_CONTENT")
+    fi
+else
+    BODY="Please pull this in!"
+fi
+
+# Create temporary file for PR body
+PR_BODY_FILE=$(mktemp)
+echo "$BODY" > "$PR_BODY_FILE"
+
+debug_print "Creating PR"
+# Create PR using the body file
+if ! time_cmd gh pr create \
+    --base "$BASE_BRANCH" \
+    --head "$ESCAPED_BRANCH" \
+    --title "$TITLE" \
+    $([ "$DRAFT" = true ] && echo "--draft") \
+    --body-file "$PR_BODY_FILE"; then
+    echo -e "${RED}Failed to create PR. Please check if there are commits to create a PR from.${NC}" >&2
+    rm -f "$PR_BODY_FILE"
+    exit 1
+fi
+
+# Clean up temporary file
+rm -f "$PR_BODY_FILE"
+
+# Open in browser if requested
+if [ "$OPEN" = true ]; then
+    debug_print "Opening PR in browser"
+    time_cmd gh pr view --web
+fi
