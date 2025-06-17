@@ -95,15 +95,94 @@ _quick_pr() {
     fi
 }
 
+# Completion for config commands
+_config_commands() {
+    local -a commands
+    commands=(
+        'show:Show current configuration'
+        'set:Set a configuration value'
+        'reset:Reset to default configuration'
+        'edit:Edit configuration file'
+    )
+    _describe 'config commands' commands
+}
+
+_config_keys() {
+    local -a keys
+    keys=(
+        'template:Use PR template (true/false)'
+        'draft:Create as draft (true/false)'
+        'open:Open in browser (true/false)'
+        'base_branch:Default base branch'
+        'lyrics_file:Path to lyrics file'
+    )
+    _describe 'config keys' keys
+}
+
+_config_values() {
+    local key="$1"
+    case "$key" in
+        template|draft|open)
+            _alternative 'booleans:boolean values:(true false)'
+            ;;
+        base_branch)
+            _git_branch_names
+            ;;
+        lyrics_file)
+            _files
+            ;;
+    esac
+}
+
+_create_pr_config() {
+    local context state line
+    
+    _arguments \
+        '1:command:_config_commands' \
+        '2:key:_config_keys' \
+        '3:value:->value'
+    
+    case $state in
+        value)
+            _config_values "${words[3]}"
+            ;;
+    esac
+}
+
+# Enhanced _create_pr to handle config subcommand
+_create_pr_enhanced() {
+    if [[ "$words[2]" == "config" ]]; then
+        shift words
+        (( CURRENT-- ))
+        _create_pr_config
+    else
+        _create_pr
+    fi
+}
+
 # Completion for other plugin functions
 _draft_pr() { _create_pr }
 _ready_pr() { _create_pr }
 _preview_pr() { _create_pr }
+_cpr_config() { _create_pr_config }
+_cpr_config_set() {
+    _arguments \
+        '1:key:_config_keys' \
+        '2:value:->value'
+    
+    case $state in
+        value)
+            _config_values "${words[2]}"
+            ;;
+    esac
+}
 
 # Associate completion functions
-compdef _create_pr create-pr
-compdef _create_pr cpr
+compdef _create_pr_enhanced create-pr
+compdef _create_pr_enhanced cpr
 compdef _quick_pr quick-pr
 compdef _draft_pr draft-pr
 compdef _ready_pr ready-pr
-compdef _preview_pr preview-pr 
+compdef _preview_pr preview-pr
+compdef _cpr_config cpr-config
+compdef _cpr_config_set cpr-config-set 

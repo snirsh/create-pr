@@ -57,6 +57,46 @@ gh --version
 which bc perl
 ```
 
+## ⚙️ Configuration
+
+The tool supports a configuration file to customize default behavior. Configuration is stored at `~/.config/create-pr/config`.
+
+### Configuration Commands
+
+```bash
+# Show current configuration
+create-pr config show
+
+# Set configuration values
+create-pr config set base_branch main
+create-pr config set template false
+create-pr config set draft false
+create-pr config set open true
+create-pr config set lyrics_file ~/my-lyrics.txt
+
+# Reset to defaults
+create-pr config reset
+
+# Edit config file directly
+create-pr config edit
+```
+
+### Available Configuration Options
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `template` | boolean | `true` | Use PR template by default |
+| `draft` | boolean | `true` | Create as draft by default |
+| `open` | boolean | `true` | Open in browser by default |
+| `base_branch` | string | `master` | Default base branch |
+| `lyrics_file` | string | `/Users/snirs/bin/lyrics` | Path to custom lyrics file |
+
+### Configuration Precedence
+
+1. Command line flags (highest priority)
+2. Configuration file
+3. Built-in defaults (lowest priority)
+
 ## 💡 Usage
 
 ### Basic Commands
@@ -102,6 +142,12 @@ quick-pr feature/auth "Add auth"   # Specific branch + title
 draft-pr feature/new               # Force draft mode
 ready-pr                          # No draft, no template
 preview-pr -b develop             # Dry run against develop
+
+# Configuration management
+cpr-config show                    # Show current config
+cpr-config set base_branch main    # Set config value
+cpr-config-set draft false         # Quick config setter
+cpr-config-show                    # Quick config viewer
 
 # Get help
 cpr-help                          # Show plugin help
@@ -165,6 +211,21 @@ preview-pr feature/new-api "Add REST API endpoints"
 # Shows all actions without executing them
 ```
 
+### Scenario 5: Configuration Setup
+```bash
+# First-time setup for teams using 'main' branch
+create-pr config set base_branch main
+create-pr config set template true
+create-pr config show
+
+# Personal preference: no drafts, immediate review
+create-pr config set draft false
+create-pr config set open true
+
+# Team using custom lyrics file
+create-pr config set lyrics_file ~/team-lyrics.txt
+```
+
 ## 📝 Template Integration
 
 ### PR Template Support
@@ -225,6 +286,10 @@ preview-pr "test-feature" "Test PR"  # Should show what would happen
 - [ ] Plugin aliases work
 - [ ] Tab completion works
 - [ ] Error handling is graceful
+- [ ] Configuration system works
+- [ ] Config file creation/editing works
+- [ ] Config precedence (CLI > config > defaults) works
+- [ ] Plugin config functions work
 
 ## 🔧 Maintenance
 
@@ -297,6 +362,26 @@ echo $plugins | grep create-pr
 source ~/.zshrc
 # Check if create-pr is in PATH
 which create-pr
+```
+
+**"Configuration not working"**
+```bash
+# Check if config system is available
+create-pr config show
+# Check config file location
+ls -la ~/.config/create-pr/
+# Reset config if corrupted
+create-pr config reset
+```
+
+**"Config file not found or corrupted"**
+```bash
+# Create config directory
+mkdir -p ~/.config/create-pr
+# Reset to defaults
+create-pr config reset
+# Verify config
+create-pr config show
 ```
 
 #### Debug Mode

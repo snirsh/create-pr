@@ -91,6 +91,24 @@ for func in quick-pr draft-pr ready-pr preview-pr; do
     "
 done
 
+# Configuration management functions
+cpr-config() {
+    create-pr config "$@"
+}
+
+cpr-config-set() {
+    if [ $# -ne 2 ]; then
+        echo "Usage: cpr-config-set <key> <value>"
+        echo "Example: cpr-config-set base_branch main"
+        return 1
+    fi
+    create-pr config set "$1" "$2"
+}
+
+cpr-config-show() {
+    create-pr config show
+}
+
 # Help function
 cpr-help() {
     echo "🚀 create-pr Oh My Zsh Plugin Help"
@@ -107,7 +125,16 @@ cpr-help() {
     echo "  draft-pr [...]             - Force draft mode"
     echo "  ready-pr [...]             - No draft, no template (quick merge)"
     echo "  preview-pr [...]           - Dry run mode"
+    echo "  cpr-config [cmd]           - Configuration management"
+    echo "  cpr-config-set <key> <val> - Set config value quickly"
+    echo "  cpr-config-show            - Show current config"
     echo "  cpr-help                   - Show this help"
+    echo ""
+    echo "Configuration:"
+    echo "  cpr-config show            - Show current configuration"
+    echo "  cpr-config set <key> <val> - Set a configuration value"
+    echo "  cpr-config reset           - Reset to defaults"
+    echo "  cpr-config edit            - Edit config file"
     echo ""
     echo "Examples:"
     echo "  cpr                        - Create PR from current branch"
@@ -115,6 +142,8 @@ cpr-help() {
     echo "  draft-pr feature/new       - Create draft PR from specific branch"
     echo "  ready-pr                   - Create ready-to-merge PR"
     echo "  preview-pr -b develop      - Preview PR creation against develop"
+    echo "  cpr-config-set base_branch main  - Set default base branch to main"
+    echo "  cpr-config-set draft false       - Disable draft by default"
     echo ""
     echo "For full create-pr options, run: create-pr --help"
 }
