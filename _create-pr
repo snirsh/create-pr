@@ -1,0 +1,109 @@
+#compdef create-pr cpr quick-pr draft-pr ready-pr preview-pr
+
+# Zsh completion for create-pr and related functions
+# This provides intelligent tab completion for all create-pr commands
+
+_create_pr() {
+    local context state line
+    local -a opts
+
+    opts=(
+        '(-t -T)'{-t,-T}'[Use PR template (default: yes)]'
+        '(-d -D)'{-d,-D}'[Create as draft (default: yes)]'
+        '(-o -O)'{-o,-O}'[Open in browser (default: yes)]'
+        '(-n -N)'{-n,-N}'[Dry run mode - show what would happen]'
+        '(-b -B)'{-b,-B}'[Base branch]:base branch:_git_branch_names'
+        '--no-template[Do not use PR template]'
+        '--no-draft[Do not create as draft]'
+        '--no-open[Do not open in browser]'
+        '--help[Show help message]'
+        '-h[Show help message]'
+    )
+
+    _arguments -C \
+        $opts \
+        '1:branch name:_git_branch_names_or_new' \
+        '2:PR title:_pr_title_suggestions'
+}
+
+_git_branch_names_or_new() {
+    local -a branches
+    local -a descriptions
+    
+    # Get existing branches
+    branches=(${(f)"$(git for-each-ref --format='%(refname:short)' refs/heads/ 2>/dev/null)"})
+    
+    # Add current branch if not in list
+    local current_branch=$(git branch --show-current 2>/dev/null)
+    if [[ -n "$current_branch" ]] && [[ ! " ${branches[@]} " =~ " ${current_branch} " ]]; then
+        branches=("$current_branch" $branches)
+    fi
+    
+    # Add descriptions
+    descriptions=()
+    for branch in $branches; do
+        descriptions+=("$branch:existing branch")
+    done
+    
+    # Add option to create new branch
+    descriptions+=("new-branch:create new branch from title")
+    
+    _describe 'branches' descriptions
+}
+
+_pr_title_suggestions() {
+    local -a titles
+    local -a descriptions
+    
+    # Get recent commit messages as title suggestions
+    local recent_commits=(${(f)"$(git log --oneline -10 --pretty=format:'%s' 2>/dev/null)"})
+    
+    descriptions=()
+    for commit in $recent_commits; do
+        # Clean up commit message and add as suggestion
+        local clean_commit=$(echo "$commit" | sed 's/^[a-f0-9]* //' | head -c 60)
+        if [[ -n "$clean_commit" ]]; then
+            descriptions+=("${clean_commit}:recent commit message")
+        fi
+    done
+    
+    # Add some common PR title patterns
+    descriptions+=(
+        "fix: :bug fix"
+        "feat: :new feature"
+        "docs: :documentation update"
+        "refactor: :code refactoring"
+        "test: :add or update tests"
+        "chore: :maintenance task"
+    )
+    
+    _describe 'PR titles' descriptions
+}
+
+# Completion for quick-pr function
+_quick_pr() {
+    local context state line
+    
+    if [[ $CURRENT -eq 2 ]]; then
+        # First argument: could be branch name or title
+        _alternative \
+            'branches:branch names:_git_branch_names_or_new' \
+            'titles:PR titles:_pr_title_suggestions'
+    elif [[ $CURRENT -eq 3 ]]; then
+        # Second argument: definitely a title
+        _pr_title_suggestions
+    fi
+}
+
+# Completion for other plugin functions
+_draft_pr() { _create_pr }
+_ready_pr() { _create_pr }
+_preview_pr() { _create_pr }
+
+# Associate completion functions
+compdef _create_pr create-pr
+compdef _create_pr cpr
+compdef _quick_pr quick-pr
+compdef _draft_pr draft-pr
+compdef _ready_pr ready-pr
+compdef _preview_pr preview-pr 
