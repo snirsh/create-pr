@@ -162,14 +162,27 @@ shift $((OPTIND-1))
 
 debug_print "Arguments after options: $@"
 
-# Get branch and title from arguments
-if [ $# -ge 1 ]; then
+# Get branch and title from arguments with smart detection
+if [ $# -eq 1 ]; then
+    # Single argument: could be branch or title
+    # If it looks like a git branch name, treat as branch; otherwise treat as title
+    if git show-ref --verify --quiet "refs/heads/$1" 2>/dev/null || 
+       git show-ref --verify --quiet "refs/remotes/origin/$1" 2>/dev/null ||
+       [[ "$1" =~ ^[a-z0-9][a-z0-9/_-]*[a-z0-9]$ ]] && [[ ${#1} -le 40 ]] && [[ ! "$1" =~ [[:space:]] ]]; then
+        # Looks like a branch name
+        BRANCH="$1"
+        debug_print "Single argument treated as branch: $BRANCH"
+    else
+        # Looks like a title (contains spaces, special chars, etc.)
+        TITLE="$1"
+        debug_print "Single argument treated as title: $TITLE"
+    fi
+    shift
+elif [ $# -ge 2 ]; then
+    # Two or more arguments: first is branch, second is title
     BRANCH="$1"
     debug_print "Branch from argument: $BRANCH"
     shift
-fi
-
-if [ $# -ge 1 ]; then
     TITLE="$1"
     debug_print "Title from argument: $TITLE"
     shift
@@ -179,6 +192,16 @@ fi
 if [ -z "$TITLE" ]; then
     TITLE=$(get_title "$BASE_BRANCH") || {
         echo -e "${RED}Error: Could not determine title from commit history${NC}" >&2
+        echo -e "${YELLOW}No commits found ahead of base branch '$BASE_BRANCH'${NC}" >&2
+        echo "" >&2
+        echo "To create a PR, you need either:" >&2
+        echo "  1. Commits ahead of the base branch, OR" >&2
+        echo "  2. Provide a title: create-pr \"My PR Title\"" >&2
+        echo "  3. Provide branch and title: create-pr \"my-branch\" \"My PR Title\"" >&2
+        echo "" >&2
+        echo "Examples:" >&2
+        echo "  create-pr \"Fix user login bug\"" >&2
+        echo "  create-pr \"feature/auth\" \"Add authentication\"" >&2
         exit 1
     }
     debug_print "Title from commit history: $TITLE"
@@ -188,7 +211,7 @@ fi
 if [ -z "$BRANCH" ]; then
     CURRENT_BRANCH=$(git branch --show-current)
     debug_print "Current branch: $CURRENT_BRANCH"
-    if [[ "$CURRENT_BRANCH" =~ ^master[0-9]*$ ]]; then
+    if [[ "$CURRENT_BRANCH" =~ ^(master|main)[0-9]*$ ]]; then
         if [ -z "$TITLE" ]; then
             echo -e "${RED}Error: Cannot create PR from master branch without a branch name or title${NC}" >&2
             exit 1
