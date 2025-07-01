@@ -19,8 +19,19 @@ alias cprd='create-pr --no-draft'      # no draft
 alias cprt='create-pr --no-template'   # no template
 alias cpro='create-pr --no-open'       # don't open browser
 
-# Quick PR creation function with smart defaults
-quick-pr() {
+# Functions will be defined after _check_git_repo with git repo validation
+
+# Function to check if we're in a git repo and give helpful feedback
+_check_git_repo() {
+    if ! git rev-parse --git-dir >/dev/null 2>&1; then
+        echo "❌ Not in a git repository. Please run this command from within a git repository."
+        return 1
+    fi
+    return 0
+}
+
+# Store original function definitions
+_original_quick_pr() {
     local usage="Usage: quick-pr [branch_name] [title]
     
 Creates a PR with smart defaults:
@@ -57,39 +68,34 @@ Examples:
     fi
 }
 
-# Draft PR creation (explicit draft mode)
-draft-pr() {
+_original_draft_pr() {
     create-pr -d "$@"
 }
 
-# Ready PR creation (no draft, no template for quick merges)
-ready-pr() {
+_original_ready_pr() {
     create-pr --no-draft --no-template "$@"
 }
 
-# Preview what create-pr would do without executing
-preview-pr() {
+_original_preview_pr() {
     create-pr -n "$@"
 }
 
-# Function to check if we're in a git repo and give helpful feedback
-_check_git_repo() {
-    if ! git rev-parse --git-dir >/dev/null 2>&1; then
-        echo "❌ Not in a git repository. Please run this command from within a git repository."
-        return 1
-    fi
-    return 0
+# Wrapper functions that check git repo first
+quick-pr() {
+    _check_git_repo && _original_quick_pr "$@"
 }
 
-# Wrapper functions that check git repo first
-for func in quick-pr draft-pr ready-pr preview-pr; do
-    eval "
-    _original_$func() { $(declare -f $func | sed '1d;2d;$d') }
-    $func() {
-        _check_git_repo && _original_$func \"\$@\"
-    }
-    "
-done
+draft-pr() {
+    _check_git_repo && _original_draft_pr "$@"
+}
+
+ready-pr() {
+    _check_git_repo && _original_ready_pr "$@"
+}
+
+preview-pr() {
+    _check_git_repo && _original_preview_pr "$@"
+}
 
 # Help function
 cpr-help() {
