@@ -304,8 +304,17 @@ if [[ "$ORIGINAL_BRANCH" =~ ^master[0-9]*$ ]]; then
     echo -e "${YELLOW}Cleaning up master branch...${NC}"
     debug_print "Switching back to $ORIGINAL_BRANCH"
     time_cmd git checkout "$ORIGINAL_BRANCH"
-    debug_print "Resetting master"
-    time_cmd git reset --hard HEAD^
+    
+    # Only reset if we actually made a new commit on master for this PR
+    # Check if the original commit exists on the remote master
+    if git fetch origin "$ORIGINAL_BRANCH" 2>/dev/null && \
+       ! git merge-base --is-ancestor "$ORIGINAL_COMMIT" "origin/$ORIGINAL_BRANCH"; then
+        debug_print "Resetting master to match remote (removing local-only commit)"
+        time_cmd git reset --hard "origin/$ORIGINAL_BRANCH"
+    else
+        debug_print "Keeping master as-is (commit exists on remote or no remote to check)"
+    fi
+    
     if [ -n "$(git status --porcelain)" ]; then
         debug_print "Stashing uncommitted changes"
         time_cmd git stash
