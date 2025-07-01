@@ -17,7 +17,7 @@ A powerful GitHub Pull Request creation tool with Oh My Zsh plugin integration. 
 
 ```bash
 # Clone this repository to your Oh My Zsh custom plugins directory
-git clone https://github.com/yourusername/create-pr ~/.oh-my-zsh/custom/plugins/create-pr
+git clone https://github.com/snirsh/create-pr ~/.oh-my-zsh/custom/plugins/create-pr
 
 # Add 'create-pr' to your plugins list in ~/.zshrc
 plugins=(... create-pr)
@@ -30,7 +30,7 @@ source ~/.zshrc
 
 ```bash
 # Clone anywhere and add to PATH
-git clone https://github.com/yourusername/create-pr ~/tools/create-pr
+git clone https://github.com/snirsh/create-pr ~/tools/create-pr
 echo 'export PATH="$HOME/tools/create-pr:$PATH"' >> ~/.zshrc
 source ~/.zshrc
 ```
@@ -39,7 +39,7 @@ source ~/.zshrc
 
 ```bash
 # Download just the script
-curl -o ~/bin/create-pr https://raw.githubusercontent.com/yourusername/create-pr/main/create-pr
+curl -o ~/bin/create-pr https://raw.githubusercontent.com/snirsh/create-pr/main/create-pr
 chmod +x ~/bin/create-pr
 ```
 
