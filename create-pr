@@ -89,7 +89,7 @@ get_title() {
 # Function to process template with proper escaping
 process_template() {
     local template_content=$1
-    local lyrics_file="/Users/snirs/bin/lyrics"
+    local lyrics_file="./lyrics"
     
     if [ ! -f "$lyrics_file" ]; then
         echo "$template_content"
