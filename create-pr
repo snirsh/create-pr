@@ -11,6 +11,7 @@ DRY_RUN=false
 BASE_BRANCH="master"
 TITLE=""
 BRANCH=""
+LYRICS_FILE=""
 
 # Check for required dependencies
 if ! command -v git >/dev/null 2>&1; then
@@ -89,9 +90,25 @@ get_title() {
 # Function to process template with proper escaping
 process_template() {
     local template_content=$1
+<<<<<<< Updated upstream
     local lyrics_file="./lyrics"
+=======
+    local lyrics_file
+    
+    # Use custom lyrics file if provided, otherwise use default
+    if [ -n "$LYRICS_FILE" ]; then
+        lyrics_file="$LYRICS_FILE"
+        debug_print "Using custom lyrics file: $lyrics_file"
+    else
+        lyrics_file="/Users/snirs/bin/lyrics"
+        debug_print "Using default lyrics file: $lyrics_file"
+    fi
+>>>>>>> Stashed changes
     
     if [ ! -f "$lyrics_file" ]; then
+        if [ -n "$LYRICS_FILE" ]; then
+            echo "Warning: Custom lyrics file '$lyrics_file' not found, skipping lyrics replacement" >&2
+        fi
         echo "$template_content"
         return
     fi
@@ -101,25 +118,28 @@ process_template() {
     lyrics_content=$(cat "$lyrics_file" | perl -p -e 's/([\/&])/\\$1/g') # Escape special chars
     
     if [ "$DRY_RUN" = true ]; then
-        debug_print "Processing template with lyrics"
+        debug_print "Processing template with lyrics from: $lyrics_file"
     fi
     
     # Process template safely using perl instead of sed for better newline handling
-    echo "$template_content" | perl -p -e "s/‼️ ➡️ Enter long description here ⬅️/$lyrics_content/g"
+    # Replace everything before the --- separator with lyrics content
+    echo "$template_content" | perl -0777 -pe "s/^.*?\n---/$lyrics_content\n\n---/s"
 }
 
 # Parse command line arguments
-while getopts "tTdDoOnNb:B:h-:" opt; do
+while getopts "tTdDoOnNb:B:l:h-:" opt; do
     case $opt in
         t|T) TEMPLATE=true ;;
         d|D) DRAFT=true ;;
         o|O) OPEN=true ;;
         n|N) DRY_RUN=true ;;
         b|B) BASE_BRANCH="$OPTARG" ;;
+        l) LYRICS_FILE="$OPTARG" ;;
         -)  case "${OPTARG}" in
                 no-template) TEMPLATE=false ;;
                 no-draft) DRAFT=false ;;
                 no-open) OPEN=false ;;
+                lyrics-file=*) LYRICS_FILE="${OPTARG#*=}" ;;
                 help)
                     echo "Usage: create-pr [options] [branch_name] [title]"
                     echo ""
@@ -131,14 +151,18 @@ while getopts "tTdDoOnNb:B:h-:" opt; do
                     echo "  -o, -O              Open in browser (default: yes)"
                     echo "  -n, -N              Dry run (show what would happen)"
                     echo "  -b, -B <branch>     Base branch (default: master)"
+                    echo "  -l <file>           Custom lyrics file for template replacement"
                     echo "  --no-template       Don't use PR template"
                     echo "  --no-draft          Don't create as draft"
                     echo "  --no-open           Don't open in browser"
+                    echo "  --lyrics-file=<file> Custom lyrics file for template replacement"
                     echo ""
                     echo "Examples:"
                     echo "  create-pr feature/my-branch \"My PR Title\"     # Creates draft PR with template and opens it"
                     echo "  create-pr --no-draft my-branch \"My Title\"     # Creates non-draft PR"
                     echo "  create-pr --no-template --no-open my-branch     # No template, won't open browser"
+                    echo "  create-pr -l ~/my-lyrics.txt \"My Title\"       # Use custom lyrics file"
+                    echo "  create-pr --lyrics-file=~/quotes.txt \"Title\"  # Use custom lyrics file (long form)"
                     exit 0
                     ;;
                 *)

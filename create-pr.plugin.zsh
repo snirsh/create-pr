@@ -19,6 +19,25 @@ alias cprd='create-pr --no-draft'      # no draft
 alias cprt='create-pr --no-template'   # no template
 alias cpro='create-pr --no-open'       # don't open browser
 
+# Function to create PR with custom lyrics file
+cpr-lyrics() {
+    if [[ $# -eq 0 ]]; then
+        echo "Usage: cpr-lyrics <lyrics-file> [other-options...]"
+        echo "Example: cpr-lyrics ~/my-quotes.txt \"My PR Title\""
+        return 1
+    fi
+    
+    local lyrics_file="$1"
+    shift
+    
+    if [[ ! -f "$lyrics_file" ]]; then
+        echo "Error: Lyrics file '$lyrics_file' not found"
+        return 1
+    fi
+    
+    _check_git_repo && create-pr -l "$lyrics_file" "$@"
+}
+
 # Functions will be defined after _check_git_repo with git repo validation
 
 # Function to check if we're in a git repo and give helpful feedback
@@ -109,18 +128,25 @@ cpr-help() {
     echo "  cpro                   - create-pr without opening browser (--no-open)"
     echo ""
     echo "Functions:"
-    echo "  quick-pr [branch] [title]  - Smart PR creation with auto-detection"
-    echo "  draft-pr [...]             - Force draft mode"
-    echo "  ready-pr [...]             - No draft, no template (quick merge)"
-    echo "  preview-pr [...]           - Dry run mode"
-    echo "  cpr-help                   - Show this help"
+    echo "  quick-pr [branch] [title]      - Smart PR creation with auto-detection"
+    echo "  draft-pr [...]                 - Force draft mode"
+    echo "  ready-pr [...]                 - No draft, no template (quick merge)"
+    echo "  preview-pr [...]               - Dry run mode"
+    echo "  cpr-lyrics <file> [...]        - Create PR with custom lyrics file"
+    echo "  cpr-help                       - Show this help"
     echo ""
     echo "Examples:"
-    echo "  cpr                        - Create PR from current branch"
-    echo "  quick-pr \"Fix login bug\"   - Create branch and PR from title"
-    echo "  draft-pr feature/new       - Create draft PR from specific branch"
-    echo "  ready-pr                   - Create ready-to-merge PR"
-    echo "  preview-pr -b develop      - Preview PR creation against develop"
+    echo "  cpr                            - Create PR from current branch"
+    echo "  quick-pr \"Fix login bug\"       - Create branch and PR from title"
+    echo "  draft-pr feature/new           - Create draft PR from specific branch"
+    echo "  ready-pr                       - Create ready-to-merge PR"
+    echo "  preview-pr -b develop          - Preview PR creation against develop"
+    echo "  cpr-lyrics ~/quotes.txt \"Fix\" - Create PR with custom lyrics file"
+    echo ""
+    echo "Custom Lyrics:"
+    echo "  You can now use your own text files for PR template replacement!"
+    echo "  Use -l <file> or --lyrics-file=<file> with any create-pr command"
+    echo "  The text will replace the CAUTION warning or description placeholder in your template"
     echo ""
     echo "For full create-pr options, run: create-pr --help"
 }
