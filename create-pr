@@ -90,11 +90,8 @@ get_title() {
 # Function to process template with proper escaping
 process_template() {
     local template_content=$1
-<<<<<<< Updated upstream
-    local lyrics_file="./lyrics"
-=======
     local lyrics_file
-    
+
     # Use custom lyrics file if provided, otherwise use default
     if [ -n "$LYRICS_FILE" ]; then
         lyrics_file="$LYRICS_FILE"
@@ -103,7 +100,6 @@ process_template() {
         lyrics_file="/Users/snirs/bin/lyrics"
         debug_print "Using default lyrics file: $lyrics_file"
     fi
->>>>>>> Stashed changes
     
     if [ ! -f "$lyrics_file" ]; then
         if [ -n "$LYRICS_FILE" ]; then
