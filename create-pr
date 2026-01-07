@@ -262,6 +262,10 @@ if [ "$DRY_RUN" = true ]; then
     exit 0
 fi
 
+# Prune stale remote-tracking branches to prevent accumulation
+debug_print "Pruning stale remote-tracking branches"
+git fetch --prune 2>/dev/null || true
+
 # Store original branch and commit
 ORIGINAL_BRANCH=$(git rev-parse --abbrev-ref HEAD)
 ORIGINAL_COMMIT=$(git rev-parse HEAD)
@@ -331,6 +335,13 @@ if [[ "$ORIGINAL_BRANCH" =~ ^master[0-9]*$ ]]; then
        ! git merge-base --is-ancestor "$ORIGINAL_COMMIT" "origin/$ORIGINAL_BRANCH"; then
         debug_print "Resetting master to match remote (removing local-only commit)"
         time_cmd git reset --hard "origin/$ORIGINAL_BRANCH"
+        
+        # Clean up the orphaned commit immediately
+        # The commit is now only reachable from the feature branch (which is pushed)
+        # so we can safely expire it from master's reflog and prune
+        debug_print "Cleaning up orphaned commit from reflog"
+        git reflog expire --expire=now --single-worktree "$ORIGINAL_BRANCH" 2>/dev/null || true
+        git gc --prune=now --quiet 2>/dev/null || true
     else
         debug_print "Keeping master as-is (commit exists on remote or no remote to check)"
     fi

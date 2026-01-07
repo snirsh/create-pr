@@ -228,6 +228,14 @@ preview-pr "test-feature" "Test PR"  # Should show what would happen
 
 ## 🔧 Maintenance
 
+### Automatic Cleanup
+
+The tool automatically handles git housekeeping:
+- **Prunes stale remote-tracking branches** before each PR creation
+- **Cleans up orphaned commits** when branching from master (expires reflog + runs gc)
+
+This prevents accumulation of stale refs and unreachable objects that would otherwise require manual `git prune` or `git gc`.
+
 ### Regular Updates
 ```bash
 # Update the tool
